@@ -1,0 +1,39 @@
+<style>
+  .chart {
+    height: 300px;
+    align-items: end;
+  }
+
+  .chart-element {
+    height: 100%;
+    max-width: 80px;
+    padding-top: 10px;
+    border-top: 1px solid white;
+
+  }
+
+  .chart-element-legend {
+    font-size: 80%;
+    position: relative;
+    top: -30px;
+    left: 2px;
+    text-wrap: nowrap;
+  }
+</style>
+<div class="block" x-data>
+  <div class="columns chart is-2 is-mobile">
+
+    {{#each expenses}}
+    <div class="column" style="height: {{height_ratio}}%">
+
+      <div class="chart-element has-background-black-ter">
+        <div class="chart-element-legend has-text-ter">
+          {{category}}<br> <strong class="has-text-white-ter">{{nor_amt amount}} zl</strong>
+        </div>
+      </div>
+
+    </div>
+    {{/each}}
+
+  </div>
+</div>

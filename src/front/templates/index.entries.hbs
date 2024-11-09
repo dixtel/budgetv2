@@ -1,0 +1,32 @@
+<div class="block">
+  <h1 class="title">Transactions</h1>
+  <h2 class="subtitle block">List of transactions from imported files</h2>
+</div>
+<nav class="level">
+  <div class="level-left"></div>
+  <div class="level-right">
+    <div class="level-item">
+      <form id="form" hx-encoding="multipart/form-data" hx-post="/api/upload" hx-swap="none">
+        <div class="field is-horizontal" x-data="{show: false, fileName: ''}">
+          <div class="file is-primary has-name">
+            <label class="file-label" style=>
+              <input class="file-input" type="file" name="file"
+                x-on:change="fileName = $event.target.files[0].name; show=true" />
+              <span class="file-cta">
+                <span class="icon">
+                  <img src="/public/fonts/upload.svg" width="100%" height="auto" />
+                </span>
+                <span class="file-label">Import bank history</span>
+              </span>
+              <span class="file-name" x-show="show" x-cloak x-text="fileName">
+              </span>
+              <button class="button is-primary field" x-show="show" style="margin-left: 5px;" x-cloak
+                @click="show=false">Upload</button>
+            </label>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+</nav>
+<div id="entries" hx-get="/api/entry" hx-trigger="load">Transactions</div>

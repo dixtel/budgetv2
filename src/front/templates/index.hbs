@@ -1,0 +1,24 @@
+{{#> base.hbs }}
+{{#*inline "title"}}Home{{/inline}}
+{{#*inline "body"}}
+<div class="fixed-grid has-2-cols">
+  <div class="grid" x-data>
+    <div class="cell box">
+      <div class="block">
+        <h1 class="title">Expenses</h1>
+        <h2 class="subtitle block">March</h2>
+      </div>
+      <div hx-get="/api/expenses?max_elements=5" hx-trigger="load" style="cursor: pointer;"
+        @click="window.location='/expenses'">
+      </div>
+    </div>
+    <div class="cell box">
+      {{> index.balances.hbs }}
+    </div>
+    <div class="cell is-col-span-2 box">
+      {{> index.entries.hbs }}
+    </div>
+  </div>
+</div>
+{{/inline}}
+{{/base.hbs}}

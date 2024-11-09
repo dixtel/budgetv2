@@ -1,0 +1,89 @@
+<div class="table-container">
+  <table class="table is-bordered is-hoverable is-fullwidth" style="table-layout: fixed; text-align: center;">
+    <thead>
+      <th>Date</th>
+      <th>Entity</th>
+      <th>Title</th>
+      <th>Amount</th>
+      <th>Category</th>
+    </thead>
+    <tbody>
+      {{#unless entries}}
+      <td style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">No data</td>
+      <td style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">No data</td>
+      <td style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">No data</td>
+      <td style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">No data</td>
+      <td style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">No data</td>
+      {{/unless}}
+      {{#each entries}}
+      <tr @click="window.location='/details?entry_id={{id}}'" style="cursor: pointer;">
+        <td style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{accounting_date}}</td>
+        <td style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{sender_or_receiver}}</td>
+        <td style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{title}}</td>
+        <td style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{nor_amt amount}}</td>
+        <td style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{category}}</td>
+      </tr>
+      {{/each}}
+    </tbody>
+    <tfoot>
+      <th>Date</th>
+      <th>Entity</th>
+      <th>Title</th>
+      <th>Amount</th>
+      <th>Category</th>
+    </tfoot>
+  </table>
+</div>
+<nav class="pagination is-rounded" role="navigation" aria-label="pagination">
+  <ul class="pagination-list">
+    {{#if first_page}}
+    <li>
+      <button hx-target="#entries" hx-get="{{first_page}}" hx-disabled-elt="this" class="pagination-link"
+        aria-label="Goto page 1">1</button>
+    </li>
+    <li>
+      <span class="pagination-ellipsis">&hellip;</span>
+    </li>
+    {{/if}}
+
+    {{#each pagination}}
+    {{#if is_current}}
+    <li>
+      <button hx-target="#entries" hx-get="{{link}}" hx-disabled-elt="this" class="pagination-link is-current"
+        aria-current="page">{{page}}</button>
+    </li>
+    {{/if}}
+    {{#unless is_current}}
+    <li>
+      <button hx-target="#entries" hx-get="{{link}}" hx-disabled-elt="this" class="pagination-link"
+        aria-label="Goto page {{page}}">{{page}}</a>
+    </li>
+    {{/unless}}
+    {{/each}}
+
+    {{#if last_page}}
+    <li>
+      <span class="pagination-ellipsis">&hellip;</span>
+    </li>
+    <li>
+      <button hx-target="#entries" hx-get="{{last_page.link}}" hx-disabled-elt="this" class="pagination-link"
+        aria-label="Goto page {{next_page.page}}">{{last_page.page}}</button>
+    </li>
+    {{/if}}
+  </ul>
+
+  {{#if previous_page}}
+  <button hx-target="#entries" hx-get="{{previous_page}}" hx-disabled-elt="this"
+    class="pagination-previous">Previous</button>
+  {{/if}}
+  {{#unless previous_page}}
+  <button class="pagination-previous is-disabled">Previous</button>
+  {{/unless}}
+
+  {{#if next_page}}
+  <button hx-target="#entries" hx-get="{{next_page}}" hx-disabled-elt="this" class="pagination-next">Next page</button>
+  {{/if}}
+  {{#unless next_page}}
+  <button href="#" class="pagination-next is-disabled">Next page</button>
+  {{/unless}}
+</nav>
