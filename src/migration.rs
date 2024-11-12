@@ -24,13 +24,13 @@ pub async fn migrate(p: &Pool<Postgres>) {
 
     migration_files.sort_by_key(|v| v.0);
 
-    println!("starting migrationg");
+    log::info!("starting migrationg");
     for (_, dir) in &migration_files {
         let content = fs::read_to_string(dir).unwrap();
         let path = dir.to_str().unwrap();
-        println!("migrating {}", path);
+        log::info!("migrating {}", path);
         let res = sqlx::query(&content).execute(p).await.unwrap();
     }
 
-    println!("migration end");
+    log::info!("migration end");
 }

@@ -2,17 +2,14 @@ mod front;
 mod migration;
 pub mod models;
 
-use std::{
-    collections::HashMap,
-    error::Error,
-    io::{self, Read},
-    process,
-};
-
+use env_logger::Env;
 use sqlx::{postgres::PgPoolOptions, Pool, Postgres};
 
 #[tokio::main]
 async fn main() {
+    env_logger::try_init_from_env(Env::default().default_filter_or("budgetv2=debug")).unwrap();
+    log::warn!("This is an example message.");
+
     let pool = PgPoolOptions::new()
         .max_connections(5)
         .connect("postgres://postgres:postgres@localhost/postgres")

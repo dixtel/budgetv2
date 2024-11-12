@@ -5,11 +5,10 @@
   <div class="grid" x-data>
     <div class="cell box">
       <div class="block">
-        <h1 class="title">Expenses</h1>
+        <h1 class="title" style="cursor: pointer;" x-data @click="window.location='/expenses'">Expenses</h1>
         <h2 class="subtitle block">March</h2>
       </div>
-      <div hx-get="/api/expenses?max_elements=5" hx-trigger="load" style="cursor: pointer;"
-        @click="window.location='/expenses'">
+      <div hx-get="/api/expenses?max_elements=5" hx-trigger="load">
       </div>
     </div>
     <div class="cell box">

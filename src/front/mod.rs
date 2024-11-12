@@ -15,12 +15,14 @@ use axum::{
 };
 use bigdecimal::{BigDecimal, FromPrimitive};
 use chrono::{Datelike, DurationRound, TimeDelta, TimeZone};
-use log::Record;
+use log::{warn, Record};
 use serde::{Deserialize, Serialize};
 use sqlx::{prelude::*, types, Pool, Postgres};
 use tower_http::services::ServeDir;
 
 use crate::models;
+
+const MAIN_ACCOUNT_ID: &'static str = "1e7a4379-4fd5-45df-ba1b-fd6f3fc34717";
 
 #[derive(Clone)]
 struct AppState {
@@ -29,7 +31,7 @@ struct AppState {
 }
 
 pub async fn start_web_server(p: &Pool<Postgres>) {
-    println!("loading templates...");
+    log::info!("loading templates...");
     let t = template::Template::new();
 
     // build our application with a single route
@@ -45,7 +47,7 @@ pub async fn start_web_server(p: &Pool<Postgres>) {
 
     // run our app with hyper, listening globally on port 3000
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
-    println!("open website at http://localhost:3000");
+    log::info!("open website at http://localhost:3000");
     axum::serve(listener, app).await.unwrap();
 }
 
@@ -98,29 +100,90 @@ async fn details(State(s): State<AppState>, Query(q): Query<DetailsQuery>) -> Re
 
 async fn expenses(State(s): State<AppState>) -> Response {
     #[derive(Serialize)]
-    struct Ctx {}
-    s.t.render("expenses.hbs", &Ctx {})
+    struct Ctx {
+        years: Vec<u32>,
+        current_year: u32,
+        current_month: u32,
+    }
+
+    #[derive(sqlx::FromRow, Serialize, Debug)]
+    struct Record {
+        accounting_date: chrono::NaiveDate,
+    }
+    let r1: Record = sqlx::query_as(
+        r#"
+        SELECT accounting_date
+        FROM entry
+        WHERE
+            source_account IN (
+                SELECT reference FROM account_reference WHERE account_id::text = $1
+            ) AND
+            amount < 0
+        ORDER BY accounting_date ASC
+        LIMIT 1
+        "#,
+    )
+    .bind(MAIN_ACCOUNT_ID)
+    .fetch_one(&s.p)
+    .await
+    .unwrap();
+
+    let r2: Record = sqlx::query_as(
+        r#"
+        SELECT accounting_date
+        FROM entry
+        WHERE
+            source_account IN (
+                SELECT reference FROM account_reference WHERE account_id::text = $1
+            ) AND
+            amount < 0
+        ORDER BY accounting_date DESC
+        LIMIT 1
+        "#,
+    )
+    .bind(MAIN_ACCOUNT_ID)
+    .fetch_one(&s.p)
+    .await
+    .unwrap();
+
+    let current_year = chrono::Local::now().year() as u32;
+    let current_month = chrono::Local::now().month();
+    let (_, year1) = r1.accounting_date.year_ce();
+    let (_, year2) = r2.accounting_date.year_ce();
+
+    s.t.render(
+        "expenses.hbs",
+        &Ctx {
+            years: (year1..=year2).collect(),
+            current_year,
+            current_month,
+        },
+    )
 }
 
 #[derive(Deserialize)]
 struct ExpensesQuery {
-    max_elements: Option<usize>,
-    month: Option<String>,
-    year: Option<String>,
+    max_elements: Option<u32>,
+    month: Option<u32>,
+    year: Option<u32>,
 }
 
 async fn api_expenses(State(s): State<AppState>, Query(q): Query<ExpensesQuery>) -> Response {
-    let year = chrono::Local::now().year();
-    let mut year2 = year;
-    let month = chrono::Local::now().month() - 1;
-    let mut month2 = month;
-    month2 += 1;
-    if month2 == 13 {
-        month2 = 1;
-        year2 += 1;
-    }
+    let year = q.year.unwrap_or_else(|| chrono::Local::now().year() as u32);
+    let month = q
+        .month
+        .unwrap_or_else(|| chrono::Local::now().month() as u32);
 
-    const MAIN_ACCOUNT_ID: &'static str = "1e7a4379-4fd5-45df-ba1b-fd6f3fc34717";
+    let r1 = chrono::NaiveDate::from_ymd_opt(year as i32, month, 1)
+        .unwrap_or(chrono::Local::now().date_naive().with_day(1).unwrap());
+
+    let (_, year) = r1.year_ce();
+    let r2 = r1.with_month(r1.month0() + 2).unwrap_or(
+        r1.with_year((year + 1) as i32)
+            .unwrap()
+            .with_month(1)
+            .unwrap(),
+    );
 
     #[derive(sqlx::FromRow, Serialize, Debug)]
     struct Record {
@@ -132,8 +195,7 @@ async fn api_expenses(State(s): State<AppState>, Query(q): Query<ExpensesQuery>)
         SELECT 
             category,
             SUM(amount) AS amount
-        FROM 
-            entry
+        FROM entry
         WHERE 
             source_account IN (
                 SELECT reference FROM account_reference WHERE account_id::text = $1
@@ -141,22 +203,20 @@ async fn api_expenses(State(s): State<AppState>, Query(q): Query<ExpensesQuery>)
             accounting_date >= $2::date AND
             accounting_date < $3::date AND
             amount < 0
-        GROUP BY 
-            category
-        ORDER BY
-            amount ASC
+        GROUP BY category
+        ORDER BY amount ASC
         "#,
     )
     .bind(MAIN_ACCOUNT_ID)
-    .bind(format!("{}-{}-1", year, month))
-    .bind(format!("{}-{}-1", year2, month2))
+    .bind(r1.format("%Y-%m-%d").to_string())
+    .bind(r2.format("%Y-%m-%d").to_string())
     .fetch_all(&s.p)
     .await
     .unwrap();
 
     if let Some(m) = q.max_elements {
-        if records.len() > m {
-            records.truncate(m);
+        if records.len() > m as usize {
+            records.truncate(m as usize);
         }
     }
 
@@ -170,6 +230,7 @@ async fn api_expenses(State(s): State<AppState>, Query(q): Query<ExpensesQuery>)
     #[derive(Serialize)]
     struct Ctx {
         expenses: Vec<Element>,
+        date_range: String,
     }
 
     let max = records.first().map(|r| r.amount.clone().abs());
@@ -189,13 +250,18 @@ async fn api_expenses(State(s): State<AppState>, Query(q): Query<ExpensesQuery>)
                     }),
                 })
                 .collect(),
+            date_range: format!(
+                "{} - {}",
+                r1.format("%Y-%m-%d").to_string(),
+                r2.format("%Y-%m-%d").to_string()
+            ),
         },
     )
 }
 
 #[derive(Deserialize)]
 struct EntryQuery {
-    page: Option<usize>,
+    page: Option<u32>,
 }
 
 #[axum::debug_handler]
@@ -209,7 +275,7 @@ async fn api_entry(State(s): State<AppState>, Query(query): Query<EntryQuery>) -
         .try_get(0)
         .unwrap();
 
-    let max_page = (count as f64 / 10.0).ceil() as usize;
+    let max_page = (count as f64 / 10.0).ceil() as u32;
 
     if current_page == 0 {
         current_page = 1;
@@ -226,7 +292,7 @@ async fn api_entry(State(s): State<AppState>, Query(query): Query<EntryQuery>) -
 
     #[derive(Serialize, Default)]
     struct Pagination {
-        page: usize,
+        page: u32,
         is_current: bool,
         link: String,
     }
@@ -247,7 +313,7 @@ async fn api_entry(State(s): State<AppState>, Query(query): Query<EntryQuery>) -
         .filter(|p| *p > 0)
         .filter(|p| *p <= max_page as i32)
         .map(|p| Pagination {
-            page: p as usize,
+            page: p as u32,
             is_current: p == current_page as i32,
             link: format!("/api/entry?page={}", p),
         })
@@ -316,7 +382,7 @@ async fn load(p: &Pool<Postgres>, s: impl io::Read) -> Result<(), Box<dyn Error>
     for result in rdr.records() {
         let record = result?;
 
-        let mapping: &[(usize, &str, Box<dyn Fn(String) -> String + Send>)] = &[
+        let mapping: &[(u32, &str, Box<dyn Fn(String) -> String + Send>)] = &[
             (
                 0,
                 "accounting_date",
@@ -363,7 +429,8 @@ async fn load(p: &Pool<Postgres>, s: impl io::Read) -> Result<(), Box<dyn Error>
         let mut values: HashMap<&str, String> = HashMap::new();
 
         for (idx, field, map) in mapping {
-            let value = &record[*idx];
+            let value = &record[*idx as usize];
+            let value = value.replace("'", "''");
             values.insert(field, map(value.to_string()));
         }
 
@@ -378,25 +445,35 @@ async fn load(p: &Pool<Postgres>, s: impl io::Read) -> Result<(), Box<dyn Error>
             fields_values.join(", ")
         );
 
-        match sqlx::query(&insert_query).execute(p).await {
+        let err = match sqlx::query(&insert_query).execute(p).await {
             Ok(_) => {
                 count += 1;
-                ()
+                Ok(())
             }
             Err(err) => {
                 if let Some(err) = err.as_database_error() {
                     if err.is_unique_violation() {
-                        log::warn!("cannnt load entry: unique violation for entry {:?}", values);
+                        log::warn!(
+                            "cannnt load entry: violation for entry {:?}: {}",
+                            values,
+                            err
+                        );
                         continue;
                     }
                 }
-                println!("{}", insert_query);
+
+                log::error!("cannot insert: {}: {}", insert_query, err);
+
                 return Err(Box::new(err));
             }
         };
+
+        if let Err(err) = err {
+            return err;
+        }
     }
 
-    println!("{} records were loaded to db", count);
+    log::info!("{} records were loaded to db", count);
 
     Ok(())
 }
@@ -408,10 +485,10 @@ async fn api_upload(
 ) -> Result<Redirect, (StatusCode, String)> {
     while let Ok(Some(m)) = multipart.next_field().await {
         let file_name = m.file_name().unwrap();
-        println!("file_name={}", file_name);
+        log::info!("file_name={}", file_name);
 
         let name = m.name().unwrap();
-        println!("name={}", name);
+        log::info!("name={}", name);
 
         let bytes = m.bytes().await.unwrap();
 
