@@ -1,3 +1,5 @@
+pub mod accounts;
+pub mod components;
 pub mod template;
 
 use std::{
@@ -6,15 +8,17 @@ use std::{
     io::{self, Read},
 };
 
+use anyhow::Context;
 use axum::{
     extract::{connect_info::MockConnectInfo, Multipart, Query, State},
-    http::{status, StatusCode},
+    http::{status, Request, StatusCode},
+    middleware::{self, Next},
     response::{Html, IntoResponse, Redirect, Response, Result},
     routing::{get, post},
-    Router,
+    Router, ServiceExt,
 };
 use bigdecimal::{BigDecimal, FromPrimitive};
-use chrono::{Datelike, DurationRound, TimeDelta, TimeZone};
+use chrono::{format, Datelike, DurationRound, TimeDelta, TimeZone};
 use log::{warn, Record};
 use serde::{Deserialize, Serialize};
 use sqlx::{prelude::*, types, Pool, Postgres};
@@ -25,7 +29,7 @@ use crate::models;
 const MAIN_ACCOUNT_ID: &'static str = "1e7a4379-4fd5-45df-ba1b-fd6f3fc34717";
 
 #[derive(Clone)]
-struct AppState {
+pub struct AppState {
     p: Pool<Postgres>,
     t: template::Template,
 }
@@ -42,6 +46,8 @@ pub async fn start_web_server(p: &Pool<Postgres>) {
         .route("/api/entry", get(api_entry))
         .route("/api/expenses", get(api_expenses))
         .route("/api/upload", post(api_upload))
+        .nest("/accounts", accounts::new_router())
+        .nest("/api/accounts", accounts::api::new_router())
         .nest_service("/public", ServeDir::new("./src/front/public"))
         .with_state(AppState { p: p.clone(), t });
 
@@ -75,6 +81,7 @@ async fn index(State(s): State<AppState>) -> Response {
             goal: res.goal.unwrap_or_default(),
         },
     )
+    .unwrap()
 }
 
 #[derive(Deserialize)]
@@ -95,7 +102,7 @@ async fn details(State(s): State<AppState>, Query(q): Query<DetailsQuery>) -> Re
         entry: models::Entry,
     }
 
-    s.t.render("entry_details.hbs", &Ctx { entry })
+    s.t.render("entry_details.hbs", &Ctx { entry }).unwrap()
 }
 
 async fn expenses(State(s): State<AppState>) -> Response {
@@ -159,6 +166,7 @@ async fn expenses(State(s): State<AppState>) -> Response {
             current_month,
         },
     )
+    .unwrap()
 }
 
 #[derive(Deserialize)]
@@ -257,6 +265,7 @@ async fn api_expenses(State(s): State<AppState>, Query(q): Query<ExpensesQuery>)
             ),
         },
     )
+    .unwrap()
 }
 
 #[derive(Deserialize)]
@@ -283,12 +292,13 @@ async fn api_entry(State(s): State<AppState>, Query(query): Query<EntryQuery>) -
         current_page = max_page
     }
 
-    let entries: Vec<models::Entry> =
-        sqlx::query_as::<_, models::Entry>("SELECT * FROM entry LIMIT 10 OFFSET $1")
-            .bind(((current_page - 1) * 10) as i64)
-            .fetch_all(&s.p)
-            .await
-            .unwrap();
+    let entries: Vec<models::Entry> = sqlx::query_as::<_, models::Entry>(
+        "SELECT * FROM entry ORDER BY accounting_date DESC LIMIT 10 OFFSET $1",
+    )
+    .bind(((current_page - 1) * 10) as i64)
+    .fetch_all(&s.p)
+    .await
+    .unwrap();
 
     #[derive(Serialize, Default)]
     struct Pagination {
@@ -347,7 +357,7 @@ async fn api_entry(State(s): State<AppState>, Query(query): Query<EntryQuery>) -
         };
     }
 
-    s.t.render("entry.hbs", &ctx)
+    s.t.render("entry.hbs", &ctx).unwrap()
 }
 
 struct HtmlTemplate {
@@ -371,7 +381,8 @@ impl IntoResponse for HtmlTemplate {
     }
 }
 
-async fn load(p: &Pool<Postgres>, s: impl io::Read) -> Result<(), Box<dyn Error>> {
+// todo: this need to be refactored because data was inseeted incorectly, migrate db again
+async fn load(p: &Pool<Postgres>, s: impl io::Read) -> anyhow::Result<()> {
     let mut rdr = csv::ReaderBuilder::new()
         .has_headers(true)
         .delimiter(b';')
@@ -381,71 +392,58 @@ async fn load(p: &Pool<Postgres>, s: impl io::Read) -> Result<(), Box<dyn Error>
 
     for result in rdr.records() {
         let record = result?;
-
-        let mapping: &[(u32, &str, Box<dyn Fn(String) -> String + Send>)] = &[
-            (
-                0,
-                "accounting_date",
-                Box::new(|v| format!("TO_DATE('{}', 'DD.MM.YYYY')", v)),
-            ),
-            (
-                1,
-                "currency_date",
-                Box::new(|v| format!("TO_DATE('{}', 'DD.MM.YYYY')", v)),
-            ),
-            (2, "sender_or_receiver", Box::new(|v| format!("'{}'", v))),
-            (3, "address", Box::new(|v| format!("'{}'", v))),
-            (
-                4,
-                "source_account",
-                Box::new(|v| format!("'{}'", v.replace("'", "''"))),
-            ),
-            (
-                5,
-                "destination_account",
-                Box::new(|v| format!("'{}'", v.replace("'", "''"))),
-            ),
-            (6, "title", Box::new(|v| format!("'{}'", v))),
-            (
-                7,
-                "amount",
-                Box::new(|v| format!("{}", v.replace(",", ".").replace(" ", ""))),
-            ),
-            (8, "currency", Box::new(|v| format!("'{}'", v))),
-            (
-                9,
-                "reference_number",
-                Box::new(|v| format!("'{}'", v.replace("'", "''"))),
-            ),
-            (10, "operation_type", Box::new(|v| format!("'{}'", v))),
-            (11, "category", Box::new(|v| format!("'{}'", v))),
-        ];
-
-        if record.len() < 11 {
-            log::warn!("invalid record");
-            continue;
-        }
-
-        let mut values: HashMap<&str, String> = HashMap::new();
-
-        for (idx, field, map) in mapping {
-            let value = &record[*idx as usize];
-            let value = value.replace("'", "''");
-            values.insert(field, map(value.to_string()));
-        }
-
-        let fields_query: Vec<&str> = mapping.iter().map(|v| v.1).collect();
-        let fields_values: Vec<String> = fields_query
-            .iter()
-            .map(|v| values.get(v).unwrap().clone())
-            .collect();
         let insert_query = format!(
-            "INSERT INTO entry ({}) VALUES ({});",
-            fields_query.join(", "),
-            fields_values.join(", ")
+            r#"INSERT INTO entry (
+                 accounting_date,
+                 currency_date,
+                 sender_or_receiver,
+                 address,
+                 source_account,
+                 destination_account,
+                 title,
+                 amount,
+                 currency, 
+                 reference_number,
+                 operation_type,
+                 category
+            ) VALUES (
+                to_date($1, 'DD.MM.YYYY'),
+                to_date($2, 'DD.MM.YYYY'),
+                $3,
+                $4,
+                $5,
+                $6,
+                $7,
+                $8,
+                $9,
+                $10,
+                $11,
+                $12
+            );"#,
         );
 
-        let err = match sqlx::query(&insert_query).execute(p).await {
+        let amount = record[7]
+            .replace(",", ".")
+            .replace(" ", "")
+            .parse::<f64>()
+            .with_context(|| format!("value: {}", &record[7]))?;
+
+        let err = match sqlx::query(&insert_query)
+            .bind(&record[0])
+            .bind(&record[1])
+            .bind(&record[2])
+            .bind(&record[3])
+            .bind(&record[4])
+            .bind(&record[5])
+            .bind(&record[6])
+            .bind(amount)
+            .bind(&record[8])
+            .bind(&record[9])
+            .bind(&record[10])
+            .bind(&record[11])
+            .execute(p)
+            .await
+        {
             Ok(_) => {
                 count += 1;
                 Ok(())
@@ -455,7 +453,7 @@ async fn load(p: &Pool<Postgres>, s: impl io::Read) -> Result<(), Box<dyn Error>
                     if err.is_unique_violation() {
                         log::warn!(
                             "cannnt load entry: violation for entry {:?}: {}",
-                            values,
+                            record,
                             err
                         );
                         continue;
@@ -464,7 +462,7 @@ async fn load(p: &Pool<Postgres>, s: impl io::Read) -> Result<(), Box<dyn Error>
 
                 log::error!("cannot insert: {}: {}", insert_query, err);
 
-                return Err(Box::new(err));
+                return Err(anyhow::anyhow!(err));
             }
         };
 

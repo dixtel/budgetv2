@@ -3,32 +3,34 @@
 {{#*inline "body"}}
 <div class="box" x-data>
   <div class="block">
-    <h1 class="title">Expenses</h1>
+    <h1 class="title">Expenses {{current_year}}</h1>
     <h2 class="subtitle block">March</h2>
   </div>
   <div class="block" id="dateInputs">
     <div class="columns">
       <div class="column is-narrow">
         <div class="select">
-          <select name="yearSelector">
+          <select name="year">
             {{#each years}}
-            <option value="{{this}}" {{#if (eq current_year this)}} selected {{/if}}>{{this}},{{current_year}}</option>
+            <option value="{{this}}" {{#if (eq ../current_year this)}} selected {{/if}}>{{this}}</option>
             {{/each}}
           </select>
         </div>
       </div>
       <div class="column is-narrow">
         <div class="select">
-          <select name="monthSelector" @change="htmx.trigger('#view', 'customTrigger', {})">
+          <select name="month" <!-- htmx.trigger('#view', 'customTrigger' , {'foo': 'bar' }) -->
+            @change="console.log(1);">
             {{#each (range 1 12)}}
-            <option value="{{this}}" {{#if (eq current_month this)}} selected {{/if}}>{{toMonthString this}}</option>
+            <option value="{{this}}" {{#if (eq ../current_month this)}} selected {{/if}}>{{toMonthString this}}</option>
             {{/each}}
           </select>
         </div>
       </div>
     </div>
   </div>
-  <div id="view" class="block" hx-get="/api/expenses" hx-trigger="load customTrigger" hx-include="#dateInputs">
+  <div id="view" class="block" hx-get="/api/expenses?max_elements=10" hx-trigger="load"
+    hx-include="#dateInputs [name='month'], #dateInputs [name='year']">
   </div>
 </div>
 {{/inline}}

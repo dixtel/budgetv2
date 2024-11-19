@@ -22,7 +22,7 @@
 </style>
 <div class="block">{{date_range}}</div>
 <div class="block">
-  {{#if (gt expenses 0)}}
+  {{#if (gt (len expenses) 0)}}
   <div class="columns chart is-2 is-mobile">
     {{#each expenses}}
     <div class="column" style="height: {{height_ratio}}%">

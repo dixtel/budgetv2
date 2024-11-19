@@ -60,18 +60,12 @@ impl Template {
         }
     }
 
-    pub fn render<T>(&self, name: &str, data: &T) -> Response
+    pub fn render<T>(&self, name: &str, data: &T) -> anyhow::Result<Response>
     where
         T: Serialize,
     {
         log::info!("render '{}': {:#?}", name, serde_json::to_value(data));
-        match self.r.read().unwrap().render(name, data) {
-            Ok(html) => Html(html).into_response(),
-            Err(err) => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to render template. Error: {err}"),
-            )
-                .into_response(),
-        }
+        let html = Html(self.r.read().unwrap().render(name, data)?);
+        Ok(html.into_response())
     }
 }

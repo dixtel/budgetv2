@@ -1,0 +1,10 @@
+{{#> base.hbs }}
+{{#*inline "title"}}Expenses{{/inline}}
+{{#*inline "body"}}
+<div class="box container">
+  <div id="accounts-table" x-data
+    x-init="$ajax('/api/accounts', { method: 'get', target: 'accounts-table:table-component' })">
+  </div>
+</div>
+{{/inline}}
+{{/base.hbs}}

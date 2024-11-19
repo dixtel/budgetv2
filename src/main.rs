@@ -7,7 +7,10 @@ use sqlx::{postgres::PgPoolOptions, Pool, Postgres};
 
 #[tokio::main]
 async fn main() {
-    env_logger::try_init_from_env(Env::default().default_filter_or("budgetv2=debug")).unwrap();
+    env_logger::try_init_from_env(
+        Env::default().default_filter_or("budgetv2=debug,sqlx=debug,axum=debug"),
+    )
+    .unwrap();
     log::warn!("This is an example message.");
 
     let pool = PgPoolOptions::new()

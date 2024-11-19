@@ -1,0 +1,83 @@
+<div id="table-component" class="table-container">
+  <table class="table is-bordered is-hoverable is-fullwidth" style="table-layout: fixed; text-align: center;">
+    <thead>
+      {{#each data.columns }}
+      <th>{{this}}</th>
+      {{/each}}
+    </thead>
+    <tfoot>
+      {{#each data.columns }}
+      <th>{{this}}</th>
+      {{/each}}
+    </tfoot>
+    <tbody>
+      {{#unless data}}
+      {{#each data.columns }}
+      <td style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">No data</td>
+      {{/each}}
+      {{/unless}}
+
+      {{#each data.entries}}
+      <tr @click="window.location='/details?entry_id={{id}}'" style="cursor: pointer;">
+        {{#each ../data.columns}}
+        <td style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{lookup ../this this}}</td>
+        {{/each}}
+      </tr>
+      {{/each}}
+    </tbody>
+  </table>
+  <nav class="pagination is-rounded" role="navigation" aria-label="pagination">
+    <ul class="pagination-list">
+      {{#with data.first_page}}
+      <li>
+        <button hx-target="#entries" hx-get="{{this}}" hx-disabled-elt="this" class="pagination-link"
+          aria-label="Goto page 1">1</button>
+      </li>
+      <li>
+        <span class="pagination-ellipsis">&hellip;</span>
+      </li>
+      {{/with}}
+
+      {{#each data.pages}}
+      {{#if is_current_page}}
+      <li>
+        <button hx-target="#entries" hx-get="{{link}}" hx-disabled-elt="this" class="pagination-link is-current"
+          aria-current="page">{{page_number}}</button>
+      </li>
+      {{else}}
+      <li>
+        <button hx-target="#entries" hx-get="{{link}}" hx-disabled-elt="this" class="pagination-link"
+          aria-label="Goto page {{page}}">{{page_number}}</a>
+      </li>
+      {{/if}}
+      {{/each}}
+
+      {{#with data.last_page}}
+      <li>
+        <span class="pagination-ellipsis">&hellip;</span>
+      </li>
+      <li>
+        <button hx-target="#entries" hx-get="{{this.link}}" hx-disabled-elt="this"
+          class="pagination-link">{{this.page_number}}</button>
+      </li>
+      {{/with}}
+
+      <li>
+        <span class="pagination-ellipsis">{{data.max_entries_per_page}} entries per page</span>
+      </li>
+    </ul>
+
+    {{#with data.previous_page}}
+    <button hx-target="#entries" hx-get="{{this}}" hx-disabled-elt="this" class="pagination-previous">Previous</button>
+    {{else}}
+    <button class="pagination-previous is-disabled">Previous</button>
+    {{/with}}
+
+    {{#with data.next_page}}
+    <button hx-target="#entries" hx-get="{{this}}" hx-disabled-elt="this" class="pagination-next">Next
+      page</button>
+    {{else}}
+    <button href="#" class="pagination-next is-disabled">Next page</button>
+    {{/with}}
+  </nav>
+</div>

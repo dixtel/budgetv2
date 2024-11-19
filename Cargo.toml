@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+anyhow = "1.0.93"
 axum = { version = "0.7.7", features = ["multipart", "macros"] }
 axum-macros = "0.4.2"
 bigdecimal = { version = "0.4.6", features = ["serde"] }

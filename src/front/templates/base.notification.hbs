@@ -1,0 +1,22 @@
+<div class="container is-max-widescreen">
+  {{#if info}}
+  <div class="notification is-info">
+    <button class="delete"></button>
+    {{info}}
+  </div>
+  {{/if}}
+
+  {{#if warn}}
+  <div class="notification is-warning">
+    <button class="delete"></button>
+    {{warn}}
+  </div>
+  {{/if}}
+
+  {{#if error}}
+  <div class="notification is-danger">
+    <button class="delete"></button>
+    {{error}}
+  </div>
+  {{/if}}
+</div>
